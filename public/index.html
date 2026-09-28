@@ -48,8 +48,10 @@ async function loadCategories() {
 
 function showAlert(msg, type = 'success') {
   const box = document.getElementById('alertBox');
-  box.innerHTML = `<div class="alert alert-${type}">${escapeHtml(msg)}</div>`;
-  setTimeout(() => { box.innerHTML = ''; }, 2500);
+  const text = (typeof msg === 'object' && msg !== null) ? (msg.message || JSON.stringify(msg)) : String(msg || '');
+  const cssClass = (type === 'error' || type === 'danger') ? 'form-msg error' : 'form-msg success';
+  box.innerHTML = `<div class="${cssClass}">${escapeHtml(text)}</div>`;
+  setTimeout(() => { box.innerHTML = ''; }, 3500);
 }
 
 async function loadProducts() {
@@ -116,7 +118,7 @@ async function buyNow(productId) {
     // Orders just this one item directly — does not touch the cart
     const order = await apiFetch('/orders/buy-now', { method: 'POST', body: JSON.stringify({ product_id: productId, quantity: 1 }) });
     showAlert(`Order #${order.id} placed successfully!`);
-    setTimeout(() => { window.location.href = '/orders.html'; }, 1200);
+    setTimeout(() => { window.location.href = '/orders.html?placed=' + order.id; }, 1200);
   } catch (e) {
     showAlert(e.message, 'error');
   }

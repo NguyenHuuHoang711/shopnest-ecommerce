@@ -1,8 +1,19 @@
 const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const path = require('path');
+const fs = require('fs');
 
-const db = new Database(path.join(__dirname, 'shopnest.db'));
+const dataDir = process.env.DATA_DIR || path.join(__dirname, 'data');
+if (!fs.existsSync(dataDir)) {
+  try { fs.mkdirSync(dataDir, { recursive: true }); } catch (e) {}
+}
+const dbPath = path.join(dataDir, 'shopnest.db');
+const legacyPath = path.join(__dirname, 'shopnest.db');
+if (!fs.existsSync(dbPath) && fs.existsSync(legacyPath)) {
+  try { fs.copyFileSync(legacyPath, dbPath); } catch (e) {}
+}
+
+const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
 // ---------- Schema ----------

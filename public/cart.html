@@ -66,7 +66,7 @@ async function loadCart() {
     document.getElementById('totalAmt').textContent = formatPrice(data.total);
     document.getElementById('cartSummary').style.display = 'block';
   } catch (e) {
-    itemsEl.innerHTML = `<p class="form-msg error">Failed to load cart.</p>`;
+    itemsEl.innerHTML = `<p class="form-msg error">${escapeHtml(e.message || 'Failed to load cart.')}</p>`;
   }
 }
 

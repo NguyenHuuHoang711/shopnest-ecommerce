@@ -25,7 +25,18 @@ async function apiFetch(path, options = {}) {
   let data = null;
   try { data = await res.json(); } catch (e) { /* no body */ }
   if (!res.ok) {
-    throw new Error((data && data.error) || `Request failed (${res.status})`);
+    let errMsg = `Request failed (${res.status})`;
+    if (data) {
+      if (typeof data.error === 'string') errMsg = data.error;
+      else if (typeof data.message === 'string') errMsg = data.message;
+      else if (typeof data === 'string') errMsg = data;
+      else if (typeof data.error === 'object' && data.error !== null) errMsg = data.error.message || JSON.stringify(data.error);
+    }
+    if (res.status === 401) {
+      clearSession();
+      renderNavbar();
+    }
+    throw new Error(errMsg);
   }
   return data;
 }
@@ -48,7 +59,8 @@ async function renderNavbar() {
   if (isLoggedIn()) {
     try {
       const cart = await apiFetch('/cart');
-      cartCount = cart.reduce((s, i) => s + i.quantity, 0);
+      const items = Array.isArray(cart) ? cart : (cart && cart.items) || [];
+      cartCount = items.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
     } catch (e) { /* ignore */ }
   }
 
@@ -92,6 +104,10 @@ function requireAdmin() {
     return false;
   }
   return true;
+}
+
+async function refreshCartCount() {
+  await renderNavbar();
 }
 
 document.addEventListener('DOMContentLoaded', renderNavbar);
