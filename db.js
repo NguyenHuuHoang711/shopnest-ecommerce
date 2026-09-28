@@ -58,6 +58,10 @@ CREATE TABLE IF NOT EXISTS order_items (
 );
 `);
 
+// Migration for address column if not existing
+try { db.exec("ALTER TABLE orders ADD COLUMN address TEXT DEFAULT ''"); } catch (e) {}
+try { db.exec("ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'placed'"); } catch (e) {}
+
 // ---------- Auto-seed ----------
 const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
 if (userCount === 0) {
