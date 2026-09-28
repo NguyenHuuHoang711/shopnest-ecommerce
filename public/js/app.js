@@ -1,7 +1,5 @@
 // ---------- API helper ----------
-const isEcoTestFe = window.location.hostname.includes('eco-test.');
-const defaultApiHost = window.location.hostname.includes('asao.com') ? 'https://api-eco-test.asao.com' : 'https://api-eco-test.asao.vn';
-const API = window.__API_URL__ || (isEcoTestFe ? `${defaultApiHost}/api` : '/api');
+const API = window.__API_URL__ || '/api';
 
 function getToken() { return localStorage.getItem('token'); }
 function getUser() {
