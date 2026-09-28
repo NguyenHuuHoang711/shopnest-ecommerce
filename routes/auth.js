@@ -16,7 +16,8 @@ router.post('/register', (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 6 characters.' });
   }
 
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  const cleanEmail = email.trim().toLowerCase();
+  const existing = db.prepare('SELECT id FROM users WHERE LOWER(TRIM(email)) = ?').get(cleanEmail);
   if (existing) {
     return res.status(409).json({ error: 'An account with this email already exists.' });
   }
@@ -24,10 +25,10 @@ router.post('/register', (req, res) => {
   const hashedPassword = bcrypt.hashSync(password, 10);
   const info = db
     .prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
-    .run(name, email, hashedPassword, 'customer');
+    .run(name.trim(), cleanEmail, hashedPassword, 'customer');
 
   const token = jwt.sign(
-    { id: info.lastInsertRowid, name, email, role: 'customer' },
+    { id: info.lastInsertRowid, name: name.trim(), email: cleanEmail, role: 'customer' },
     JWT_SECRET,
     { expiresIn: '7d' }
   );
@@ -35,7 +36,7 @@ router.post('/register', (req, res) => {
   res.status(201).json({
     message: 'Registration successful.',
     token,
-    user: { id: info.lastInsertRowid, name, email, role: 'customer' }
+    user: { id: info.lastInsertRowid, name: name.trim(), email: cleanEmail, role: 'customer' }
   });
 });
 
@@ -47,7 +48,8 @@ router.post('/login', (req, res) => {
     return res.status(400).json({ error: 'Email and password are required.' });
   }
 
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  const cleanEmail = email.trim().toLowerCase();
+  const user = db.prepare('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?').get(cleanEmail);
   if (!user) {
     return res.status(401).json({ error: 'Invalid email or password.' });
   }
