@@ -1,0 +1,48 @@
+name: ShopNest CI/CD & Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  ci-test:
+    name: Test npm install & npm start
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Test server startup & healthcheck
+        run: |
+          npm start &
+          PID=$!
+          sleep 3
+          curl -f http://localhost:3000/api/health || (echo "Healthcheck failed" && kill $PID && exit 1)
+          echo "Server started successfully and responded to healthcheck!"
+          kill $PID
+
+  deploy-lxc:
+    name: Deploy to LXC Container (Docker Compose)
+    needs: ci-test
+    runs-on: [self-hosted, shopnest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy via Docker Compose
+        run: |
+          docker compose down --remove-orphans || true
+          docker compose up -d --build
+          sleep 5
+          docker compose ps
+          curl -f http://localhost:3000/api/health
+          echo "ShopNest e-commerce deployed successfully on LXC container!"
