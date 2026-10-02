@@ -1,0 +1,9 @@
+node_modules
+frontend
+terraform
+.git
+.github
+*.log
+data/*.db
+data/*.db-wal
+data/*.db-shm

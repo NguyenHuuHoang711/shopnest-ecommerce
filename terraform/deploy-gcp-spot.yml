@@ -1,0 +1,113 @@
+name: ShopNest — Deploy to GCP Spot VM (OIDC)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # Bắt buộc để xin OIDC token từ Google Cloud
+  packages: write   # Để push Docker image lên GHCR
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  GCP_ZONE: asia-southeast1-a
+  VM_NAME: shopnest-spot-vm
+
+jobs:
+  # ────────────────────────────────────────────
+  # 1. CI TEST & BUILD/PUSH DOCKER IMAGE
+  # ────────────────────────────────────────────
+  build-and-push:
+    name: Build & Push Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies & test
+        run: |
+          npm install
+          npm start &
+          PID=$!
+          sleep 3
+          curl -f http://localhost:3000/api/health || (kill $PID && exit 1)
+          kill $PID
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & Push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ────────────────────────────────────────────
+  # 2. DEPLOY VIA GOOGLE CLOUD OIDC (Không cần Private Key)
+  # ────────────────────────────────────────────
+  deploy-to-gcp:
+    name: Deploy to GCP Spot VM via OIDC
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xác thực với Google Cloud qua OIDC (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      - name: Cài đặt Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Docker Compose lên Spot VM qua gcloud SSH
+        run: |
+          echo "=== Kết nối tới Spot VM $VM_NAME ==="
+          
+          # Copy docker-compose.yml và nginx config lên Spot VM
+          gcloud compute scp --zone="$GCP_ZONE" --recurse \
+            docker-compose.yml nginx public "$VM_NAME":/opt/shopnest/
+
+          # Chạy pull image mới và khởi động containers
+          gcloud compute ssh "$VM_NAME" --zone="$GCP_ZONE" --command="
+            cd /opt/shopnest
+            echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose pull backend
+            docker compose up -d backend nginx
+            docker compose ps
+          "
+
+      - name: Healthcheck kiểm tra sau khi deploy
+        run: |
+          echo "=== Chạy health check trên VM ==="
+          gcloud compute ssh "$VM_NAME" --zone="$GCP_ZONE" --command="
+            for i in \$(seq 1 6); do
+              CODE=\$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/health || echo '000')
+              if [ \"\$CODE\" = '200' ]; then
+                echo '✅ API Healthcheck PASSED (HTTP 200)'
+                exit 0
+              fi
+              echo \"Chờ API khởi động (\$i/6)...\"
+              sleep 5
+            done
+            echo '❌ Healthcheck FAILED'
+            exit 1
+          "

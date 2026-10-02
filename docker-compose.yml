@@ -1,9 +1,12 @@
 version: '3.8'
 
 services:
-  # ─── Backend: pull image từ GHCR (Jenkins deploy sẽ update image tag) ───
+  # ─── Backend: Node.js API (SQLite database) ───
   backend:
-    image: ghcr.io/nguyenhuuhoang711/shopnest-ecommerce:latest
+    image: ghcr.io/nguyenhuuhoang711/shopnest-backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: shopnest-backend
     restart: unless-stopped
     expose:
@@ -13,22 +16,22 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
+      - DATA_DIR=/app/data
 
-  # ─── Nginx: Reverse proxy ShopNest ───
-  nginx:
-    image: nginx:alpine
-    container_name: shopnest-nginx
+  # ─── Frontend: React SPA served by Nginx + API reverse proxy ───
+  frontend:
+    image: ghcr.io/nguyenhuuhoang711/shopnest-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: shopnest-frontend
     restart: unless-stopped
     ports:
       - "80:80"
-      - "3000:80"
-    volumes:
-      - ./public:/usr/share/nginx/html:ro
-      - ./nginx/shopnest.conf:/etc/nginx/conf.d/shopnest.conf:ro
     depends_on:
       - backend
 
-  # ─── Jenkins: CI/CD Dashboard ───
+  # ─── Jenkins: CI/CD Automation ───
   jenkins:
     image: jenkins/jenkins:lts-jdk21
     container_name: shopnest-jenkins
@@ -40,6 +43,7 @@ services:
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker:ro
     environment:
       - JENKINS_OPTS=--prefix=/
       - JAVA_OPTS=-Djenkins.install.runSetupWizard=false

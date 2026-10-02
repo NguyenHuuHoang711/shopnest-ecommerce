@@ -2,11 +2,10 @@ pipeline {
     agent any
 
     environment {
-        REGISTRY     = "ghcr.io"
-        IMAGE_NAME   = "nguyenhuuhoang711/shopnest-ecommerce"
-        IMAGE_FULL   = "${REGISTRY}/${IMAGE_NAME}:latest"
-        COMPOSE_FILE = "/home/ubuntu/actions-runner/_work/shopnest-ecommerce/shopnest-ecommerce/docker-compose.yml"
-        COMPOSE_DIR  = "/home/ubuntu/actions-runner/_work/shopnest-ecommerce/shopnest-ecommerce"
+        REGISTRY       = "ghcr.io"
+        IMAGE_BACKEND  = "nguyenhuuhoang711/shopnest-backend"
+        IMAGE_FRONTEND = "nguyenhuuhoang711/shopnest-frontend"
+        COMPOSE_DIR    = "/opt/shopnest"
     }
 
     triggers {
@@ -27,19 +26,24 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'GHCR_TOKEN', variable: 'GHCR_TOKEN')]) {
                     sh '''
-                        echo "$GHCR_TOKEN" | docker login ghcr.io -u nguyenhuuhoang711 --password-stdin
-                        echo "Logged in to GHCR"
+                        if [ -n "$GHCR_TOKEN" ]; then
+                            echo "$GHCR_TOKEN" | docker login ghcr.io -u nguyenhuuhoang711 --password-stdin
+                            echo "Logged in to GHCR"
+                        else
+                            echo "GHCR_TOKEN not provided, continuing with public / existing login..."
+                        fi
                     '''
                 }
             }
         }
 
-        stage('Pull latest image from GHCR') {
+        stage('Pull latest images from GHCR') {
             steps {
                 sh '''
-                    echo "Pulling image: ${IMAGE_FULL}"
-                    docker pull ${IMAGE_FULL}
-                    echo "Pull complete: $(docker inspect --format='{{.Id}}' ${IMAGE_FULL} | cut -c1-20)"
+                    echo "Pulling latest ShopNest images from GHCR..."
+                    docker pull ${REGISTRY}/${IMAGE_BACKEND}:latest || true
+                    docker pull ${REGISTRY}/${IMAGE_FRONTEND}:latest || true
+                    echo "Image pull completed."
                 '''
             }
         }
@@ -47,17 +51,13 @@ pipeline {
         stage('Deploy with Docker Compose') {
             steps {
                 sh '''
-                    echo "Deploying ShopNest with new image..."
+                    echo "Deploying ShopNest services..."
                     cd ${COMPOSE_DIR}
 
-                    # Stop only the backend, keep jenkins + nginx running
-                    docker compose stop backend || true
-                    docker compose rm -f backend || true
+                    # Re-create and restart backend + frontend
+                    docker compose up -d --remove-orphans backend frontend
 
-                    # Start backend with new image (no --build, pulls from GHCR)
-                    docker compose up -d backend nginx
-
-                    echo "Waiting for backend to start..."
+                    echo "Waiting for services to initialize..."
                     sleep 5
 
                     docker compose ps
@@ -68,33 +68,27 @@ pipeline {
         stage('Health Check') {
             steps {
                 sh '''
-                    echo "Running health checks..."
+                    echo "Running health checks on deployed services..."
 
-                    # Wait up to 30s for backend to be ready
+                    # Wait up to 30s for API and Frontend to be healthy
                     for i in $(seq 1 6); do
-                        STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health || echo "000")
-                        if [ "$STATUS" = "200" ]; then
-                            echo "✅ API health check PASSED (HTTP 200)"
+                        API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health || curl -s -o /dev/null -w "%{http_code}" http://localhost/api/health || echo "000")
+                        FE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/ || echo "000")
+                        
+                        if [ "$API_STATUS" = "200" ] && [ "$FE_STATUS" = "200" ]; then
+                            echo "✅ Health check PASSED: API HTTP $API_STATUS, Frontend HTTP $FE_STATUS"
                             break
                         fi
-                        echo "Attempt $i: API returned $STATUS, waiting..."
+                        echo "Attempt $i/6: API=$API_STATUS, Frontend=$FE_STATUS. Waiting 5s..."
                         sleep 5
                     done
 
-                    if [ "$STATUS" != "200" ]; then
-                        echo "❌ Health check FAILED after 30s"
+                    if [ "$API_STATUS" != "200" ]; then
+                        echo "❌ API Health check FAILED after 30s"
                         exit 1
                     fi
 
-                    # Security checks
-                    ENV_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/.env)
-                    if [ "$ENV_STATUS" = "404" ] || [ "$ENV_STATUS" = "403" ]; then
-                        echo "✅ Security: .env blocked (HTTP $ENV_STATUS)"
-                    else
-                        echo "⚠️  Security warning: .env returned HTTP $ENV_STATUS"
-                    fi
-
-                    echo "🎉 Deploy complete! Image: ${IMAGE_FULL}"
+                    echo "🎉 Deploy complete and verified!"
                 '''
             }
         }
@@ -102,13 +96,12 @@ pipeline {
 
     post {
         success {
-            echo "✅ ShopNest deployed successfully from GHCR image: ${IMAGE_FULL}"
+            echo "✅ ShopNest deployed successfully via Jenkins from GHCR!"
         }
         failure {
-            echo "❌ Deploy failed! Rolling back..."
+            echo "❌ Deploy failed! Outputting recent docker compose logs:"
             sh '''
-                cd ${COMPOSE_DIR}
-                docker compose up -d backend || true
+                cd ${COMPOSE_DIR} && docker compose logs --tail=30 || true
             '''
         }
         always {

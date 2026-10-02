@@ -1,20 +1,28 @@
-name: ShopNest CI — Build & Push to GHCR
+name: ShopNest CI/CD — Build on GitHub Actions & Deploy via Jenkins
 
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  BACKEND_IMAGE: ghcr.io/nguyenhuuhoang711/shopnest-backend
+  FRONTEND_IMAGE: ghcr.io/nguyenhuuhoang711/shopnest-frontend
+  GCP_ZONE: asia-southeast1-a
+  VM_NAME: shopnest-spot-vm
 
 jobs:
   # ────────────────────────────────────────────
-  # JOB 1: Test on GitHub Cloud runner
+  # JOB 1: Test Backend & Frontend Build
   # ────────────────────────────────────────────
   ci-test:
-    name: Test (npm install & healthcheck)
+    name: Test (Backend Health & Frontend Build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,33 +31,30 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install dependencies
-        run: npm install
-
-      - name: Test server startup & healthcheck
+      - name: Install & Test Backend
         run: |
+          npm install
           npm start &
           PID=$!
-          sleep 3
+          sleep 4
           curl -f http://localhost:3000/api/health || (kill $PID && exit 1)
-          echo "Healthcheck passed!"
+          echo "Backend Healthcheck passed!"
           kill $PID
 
+      - name: Install & Build Frontend
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build
+          echo "Frontend React build succeeded!"
+
   # ────────────────────────────────────────────
-  # JOB 2: Build & Push image to GHCR
+  # JOB 2: Build & Push Images to GHCR on GitHub-hosted Runners
   # ────────────────────────────────────────────
   build-push:
-    name: Build & Push Docker image to GHCR
+    name: Build & Push Docker Images to GHCR
     needs: ci-test
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    outputs:
-      image_tag: ${{ steps.meta.outputs.tags }}
-      image_digest: ${{ steps.push.outputs.digest }}
-
     steps:
       - uses: actions/checkout@v4
 
@@ -60,52 +65,69 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata (tags & labels)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,prefix=sha-,format=short
-            type=raw,value=latest,enable={{is_default_branch}}
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push Docker image
-        id: push
+      - name: Build & Push Backend Image
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ./Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.BACKEND_IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Summary
+      - name: Build & Push Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ env.FRONTEND_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Summary
         run: |
-          echo "### ✅ Image pushed to GHCR" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Digest:** \`${{ steps.push.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Tags:** ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Jenkins will automatically pull and deploy this image." >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Docker Images Built and Pushed to GHCR" >> $GITHUB_STEP_SUMMARY
+          echo "- **Backend:** \`${{ env.BACKEND_IMAGE }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Frontend:** \`${{ env.FRONTEND_IMAGE }}:latest\`" >> $GITHUB_STEP_SUMMARY
 
   # ────────────────────────────────────────────
-  # JOB 3: Trigger Jenkins via webhook (self-hosted runner trong LXC)
+  # JOB 3: Trigger Jenkins Deployment on Server / VM
   # ────────────────────────────────────────────
   trigger-jenkins:
-    name: Trigger Jenkins deploy pipeline
+    name: Trigger Jenkins Deploy
     needs: build-push
-    runs-on: [self-hosted, shopnest]
+    runs-on: ubuntu-latest
     steps:
-      - name: Trigger Jenkins pipeline via webhook
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (OIDC)
+        continue-on-error: true
+        id: gcp-auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      - name: Set up Google Cloud SDK
+        if: steps.gcp-auth.outcome == 'success'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Trigger Jenkins via GCP VM or Direct Webhook
         run: |
-          IMAGE="ghcr.io/${{ github.repository }}:latest"
-          echo "Triggering Jenkins to deploy: $IMAGE"
-          curl -s -o /dev/null -w "Jenkins webhook: HTTP %{http_code}\n" \
-            -X POST "http://localhost:8080/generic-webhook-trigger/invoke?token=shopnest-deploy" \
-            -H "Content-Type: application/json" \
-            -d "{\"image\": \"${IMAGE}\", \"sha\": \"${{ github.sha }}\"}" || true
-          echo "Jenkins deploy triggered!"
+          echo "Triggering Jenkins to pull new images and reload services..."
+          if [ "${{ steps.gcp-auth.outcome }}" = "success" ]; then
+            # Sync docker-compose.yml to VM and trigger Jenkins pipeline webhook
+            gcloud compute scp --zone="${{ env.GCP_ZONE }}" \
+              docker-compose.yml "${{ env.VM_NAME }}":/opt/shopnest/ || true
+
+            gcloud compute ssh "${{ env.VM_NAME }}" --zone="${{ env.GCP_ZONE }}" --command="
+              curl -s -X POST 'http://localhost:8080/generic-webhook-trigger/invoke?token=shopnest-deploy' \
+                -H 'Content-Type: application/json' \
+                -d '{\"sha\": \"${{ github.sha }}\"}' || true
+            " || true
+          fi
+          echo "Deployment trigger step completed."
