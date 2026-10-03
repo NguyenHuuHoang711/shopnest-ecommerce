@@ -24,26 +24,39 @@ pipeline {
     stages {
         stage('Login to GHCR') {
             steps {
-                withCredentials([string(credentialsId: 'GHCR_TOKEN', variable: 'GHCR_TOKEN')]) {
-                    sh '''
-                        if [ -n "$GHCR_TOKEN" ]; then
-                            echo "$GHCR_TOKEN" | docker login ghcr.io -u nguyenhuuhoang711 --password-stdin
-                            echo "Logged in to GHCR"
-                        else
-                            echo "GHCR_TOKEN not provided, continuing with public / existing login..."
-                        fi
-                    '''
+                script {
+                    try {
+                        withCredentials([string(credentialsId: 'GHCR_TOKEN', variable: 'GHCR_TOKEN')]) {
+                            sh '''
+                                if [ -n "$GHCR_TOKEN" ]; then
+                                    echo "$GHCR_TOKEN" | docker login ghcr.io -u nguyenhuuhoang711 --password-stdin
+                                    echo "Logged in to GHCR"
+                                fi
+                            '''
+                        }
+                    } catch (err) {
+                        echo "GHCR_TOKEN credential not provided in Jenkins, continuing with public / existing login..."
+                    }
                 }
             }
         }
 
-        stage('Pull latest images from GHCR') {
+        stage('Sync Code & Prepare') {
             steps {
                 sh '''
-                    echo "Pulling latest ShopNest images from GHCR..."
-                    docker pull ${REGISTRY}/${IMAGE_BACKEND}:latest || true
-                    docker pull ${REGISTRY}/${IMAGE_FRONTEND}:latest || true
-                    echo "Image pull completed."
+                    echo "Syncing repository code to ${COMPOSE_DIR}..."
+                    cp -r ./* ${COMPOSE_DIR}/
+                '''
+            }
+        }
+
+        stage('Pull or Build Docker Images') {
+            steps {
+                sh '''
+                    echo "Pulling latest ShopNest images or building locally..."
+                    cd ${COMPOSE_DIR}
+                    docker compose pull backend frontend || docker compose build backend frontend
+                    echo "Images ready for deployment."
                 '''
             }
         }
@@ -55,7 +68,6 @@ pipeline {
                     cd ${COMPOSE_DIR}
 
                     # Re-create and restart backend + frontend
-                    docker compose pull backend frontend || true
                     docker compose up -d --force-recreate --remove-orphans backend frontend
 
                     echo "Waiting for services to initialize..."
@@ -73,8 +85,21 @@ pipeline {
 
                     # Wait up to 30s for API and Frontend to be healthy
                     for i in $(seq 1 6); do
-                        API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health || curl -s -o /dev/null -w "%{http_code}" http://localhost/api/health || echo "000")
-                        FE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/ || echo "000")
+                        API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://backend:3000/api/health)
+                        if [ "$API_STATUS" != "200" ]; then
+                            API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://frontend/api/health)
+                        fi
+                        if [ "$API_STATUS" != "200" ]; then
+                            API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health)
+                        fi
+                        if [ "$API_STATUS" != "200" ]; then
+                            API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/api/health)
+                        fi
+
+                        FE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://frontend/)
+                        if [ "$FE_STATUS" != "200" ]; then
+                            FE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/)
+                        fi
                         
                         if [ "$API_STATUS" = "200" ] && [ "$FE_STATUS" = "200" ]; then
                             echo "✅ Health check PASSED: API HTTP $API_STATUS, Frontend HTTP $FE_STATUS"

@@ -114,7 +114,7 @@ jobs:
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Sync docker-compose & Deploy containers on Spot VM
+      - name: Sync docker-compose to Spot VM
         run: |
           echo "=== Syncing docker-compose.yml to VM ==="
           cat docker-compose.yml | gcloud compute ssh "${{ env.VM_NAME }}" \
@@ -122,22 +122,44 @@ jobs:
             --quiet \
             --command="sudo tee /opt/shopnest/docker-compose.yml > /dev/null"
 
-          echo "=== Pulling latest images & Restarting containers ==="
+      - name: Trigger Jenkins Deploy & Monitor
+        run: |
+          echo "=== Triggering Jenkins CD Pipeline on Spot VM ==="
           gcloud compute ssh "${{ env.VM_NAME }}" --zone="${{ env.GCP_ZONE }}" --quiet --command="
-            cd /opt/shopnest
-            echo '${{ secrets.GITHUB_TOKEN }}' | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            sudo docker compose pull backend frontend
-            sudo docker compose up -d --force-recreate backend frontend
-            sudo docker compose ps
-          "
-
-          echo "=== Triggering Jenkins deploy webhook (optional backup) ==="
-          gcloud compute ssh "${{ env.VM_NAME }}" --zone="${{ env.GCP_ZONE }}" --quiet --command="
-            curl -s -X POST 'http://localhost:8080/generic-webhook-trigger/invoke?token=shopnest-deploy' \
+            echo 'Invoking Jenkins webhook for sha ${{ github.sha }}...'
+            TRIGGER_RESP=\$(curl -s -X POST 'http://localhost:8080/generic-webhook-trigger/invoke?token=shopnest-deploy' \
               -H 'Content-Type: application/json' \
-              -d '{\"sha\": \"${{ github.sha }}\"}' || true
+              -d '{\"sha\": \"${{ github.sha }}\"}')
+            echo \"Trigger response: \$TRIGGER_RESP\"
+
+            echo 'Waiting for Jenkins build to start and complete...'
+            sleep 5
+
+            for i in \$(seq 1 30); do
+              BUILD_INFO=\$(curl -s http://localhost:8080/job/shopnest-deploy/lastBuild/api/json 2>/dev/null || echo '{}')
+              IS_BUILDING=\$(echo \"\$BUILD_INFO\" | jq -r '.building // true')
+              BUILD_NUM=\$(echo \"\$BUILD_INFO\" | jq -r '.number // empty')
+              RESULT=\$(echo \"\$BUILD_INFO\" | jq -r '.result // empty')
+
+              echo \"Attempt \$i/30: Build #\$BUILD_NUM - building=\$IS_BUILDING, result=\$RESULT\"
+
+              if [ \"\$IS_BUILDING\" = 'false' ] && [ -n \"\$RESULT\" ] && [ \"\$RESULT\" != 'null' ]; then
+                if [ \"\$RESULT\" = 'SUCCESS' ]; then
+                  echo \"✅ Jenkins build #\$BUILD_NUM SUCCEEDED!\"
+                  exit 0
+                else
+                  echo \"❌ Jenkins build #\$BUILD_NUM FAILED with result: \$RESULT\"
+                  echo '=== Last 60 lines of Jenkins console log ==='
+                  curl -s \"http://localhost:8080/job/shopnest-deploy/\${BUILD_NUM}/consoleText\" | tail -n 60
+                  exit 1
+                fi
+              fi
+              sleep 5
+            done
+
+            echo '❌ Jenkins build timed out after 150s'
+            exit 1
           "
-          echo "Deploy completed for sha: ${{ github.sha }}"
 
       - name: Healthcheck deployed services
         run: |
