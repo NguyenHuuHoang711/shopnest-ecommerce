@@ -117,8 +117,10 @@ jobs:
       - name: Sync docker-compose & Trigger Jenkins webhook
         run: |
           echo "=== Syncing docker-compose.yml to VM ==="
-          gcloud compute scp --zone="${{ env.GCP_ZONE }}" \
-            docker-compose.yml "${{ env.VM_NAME }}":/opt/shopnest/
+          # Dùng SSH + sudo tee thay vì SCP để tránh permission denied trên /opt/shopnest/
+          cat docker-compose.yml | gcloud compute ssh "${{ env.VM_NAME }}" \
+            --zone="${{ env.GCP_ZONE }}" \
+            --command="sudo tee /opt/shopnest/docker-compose.yml > /dev/null"
 
           echo "=== Triggering Jenkins deploy webhook ==="
           gcloud compute ssh "${{ env.VM_NAME }}" --zone="${{ env.GCP_ZONE }}" --command="
