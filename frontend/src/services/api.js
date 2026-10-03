@@ -109,9 +109,9 @@ export const api = {
     }),
 
   // Orders
-  getOrders: () => request('/orders'),
+  getOrders: () => request('/orders/my-orders'),
   checkout: (orderData) =>
-    request('/orders', {
+    request('/orders/checkout', {
       method: 'POST',
       body: JSON.stringify(orderData),
     }),
