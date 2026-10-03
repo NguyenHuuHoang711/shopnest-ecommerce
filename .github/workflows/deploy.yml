@@ -1,8 +1,6 @@
 name: ShopNest CI/CD — Build on GitHub Actions & Deploy via Jenkins
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 permissions:
