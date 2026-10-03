@@ -55,7 +55,8 @@ pipeline {
                     cd ${COMPOSE_DIR}
 
                     # Re-create and restart backend + frontend
-                    docker compose up -d --remove-orphans backend frontend
+                    docker compose pull backend frontend || true
+                    docker compose up -d --force-recreate --remove-orphans backend frontend
 
                     echo "Waiting for services to initialize..."
                     sleep 5

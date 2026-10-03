@@ -6,7 +6,7 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 router.use(authenticate);
 
 // ---------- PLACE ORDER (checkout) ----------
-router.post('/checkout', (req, res) => {
+const handleCheckout = (req, res) => {
   try {
     const { address } = req.body;
 
@@ -59,7 +59,9 @@ router.post('/checkout', (req, res) => {
     console.error('Checkout error:', err);
     res.status(500).json({ error: err.message || 'Failed to place order.' });
   }
-});
+};
+router.post('/checkout', handleCheckout);
+router.post('/', handleCheckout);
 
 // ---------- BUY NOW (direct single-item order) ----------
 router.post('/buy-now', (req, res) => {
@@ -107,7 +109,7 @@ router.post('/buy-now', (req, res) => {
 });
 
 // ---------- GET my orders ----------
-router.get('/my-orders', (req, res) => {
+const handleGetMyOrders = (req, res) => {
   const orders = db
     .prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC')
     .all(req.user.id);
@@ -124,7 +126,9 @@ router.get('/my-orders', (req, res) => {
   });
 
   res.json(ordersWithItems);
-});
+};
+router.get('/my-orders', handleGetMyOrders);
+router.get('/', handleGetMyOrders);
 
 // ---------- GET all orders (admin only) ----------
 router.get('/all', requireAdmin, (req, res) => {
