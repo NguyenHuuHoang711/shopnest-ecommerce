@@ -96,7 +96,7 @@ export const api = {
   addToCart: (productId, quantity = 1) =>
     request('/cart', {
       method: 'POST',
-      body: JSON.stringify({ productId, quantity }),
+      body: JSON.stringify({ product_id: productId, quantity }),
     }),
   updateCartItem: (id, quantity) =>
     request(`/cart/${id}`, {

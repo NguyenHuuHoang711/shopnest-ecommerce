@@ -17,8 +17,15 @@ export function CartProvider({ children }) {
     }
     try {
       setLoading(true);
-      const items = await api.getCart();
-      setCartItems(Array.isArray(items) ? items : []);
+      const res = await api.getCart();
+      // Backend returns { items: [...], total: N }
+      // Each item has cart_item_id (the cart row id) plus product fields
+      const raw = res?.items ?? (Array.isArray(res) ? res : []);
+      const items = raw.map((item) => ({
+        ...item,
+        id: item.cart_item_id ?? item.id, // normalize for update/remove
+      }));
+      setCartItems(items);
     } catch (err) {
       console.error('Failed to load cart', err);
     } finally {
