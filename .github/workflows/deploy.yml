@@ -114,18 +114,45 @@ jobs:
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Sync docker-compose & Trigger Jenkins webhook
+      - name: Sync docker-compose & Deploy containers on Spot VM
         run: |
           echo "=== Syncing docker-compose.yml to VM ==="
-          # Dùng SSH + sudo tee thay vì SCP để tránh permission denied trên /opt/shopnest/
           cat docker-compose.yml | gcloud compute ssh "${{ env.VM_NAME }}" \
             --zone="${{ env.GCP_ZONE }}" \
+            --quiet \
             --command="sudo tee /opt/shopnest/docker-compose.yml > /dev/null"
 
-          echo "=== Triggering Jenkins deploy webhook ==="
-          gcloud compute ssh "${{ env.VM_NAME }}" --zone="${{ env.GCP_ZONE }}" --command="
+          echo "=== Pulling latest images & Restarting containers ==="
+          gcloud compute ssh "${{ env.VM_NAME }}" --zone="${{ env.GCP_ZONE }}" --quiet --command="
+            cd /opt/shopnest
+            echo '${{ secrets.GITHUB_TOKEN }}' | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            sudo docker compose pull backend frontend
+            sudo docker compose up -d --force-recreate backend frontend
+            sudo docker compose ps
+          "
+
+          echo "=== Triggering Jenkins deploy webhook (optional backup) ==="
+          gcloud compute ssh "${{ env.VM_NAME }}" --zone="${{ env.GCP_ZONE }}" --quiet --command="
             curl -s -X POST 'http://localhost:8080/generic-webhook-trigger/invoke?token=shopnest-deploy' \
               -H 'Content-Type: application/json' \
               -d '{\"sha\": \"${{ github.sha }}\"}' || true
           "
-          echo "Jenkins deploy triggered for sha: ${{ github.sha }}"
+          echo "Deploy completed for sha: ${{ github.sha }}"
+
+      - name: Healthcheck deployed services
+        run: |
+          echo "=== Verifying deployed service health on VM ==="
+          gcloud compute ssh "${{ env.VM_NAME }}" --zone="${{ env.GCP_ZONE }}" --quiet --command="
+            for i in \$(seq 1 6); do
+              API_CODE=\$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/health || curl -s -o /dev/null -w '%{http_code}' http://localhost/api/health || echo '000')
+              FE_CODE=\$(curl -s -o /dev/null -w '%{http_code}' http://localhost/ || echo '000')
+              if [ \"\$API_CODE\" = '200' ] && [ \"\$FE_CODE\" = '200' ]; then
+                echo \"✅ Healthcheck PASSED: API HTTP \$API_CODE, Frontend HTTP \$FE_CODE\"
+                exit 0
+              fi
+              echo \"Attempt \$i/6: API=\$API_CODE, Frontend=\$FE_CODE. Waiting 5s...\"
+              sleep 5
+            done
+            echo '❌ Healthcheck FAILED'
+            exit 1
+          "
