@@ -92,6 +92,36 @@ pipeline {
                 '''
             }
         }
+
+        stage('Cleanup Old Images') {
+            steps {
+                sh '''
+                    echo "=== Cleaning up old Docker images (keep 3 newest per service) ==="
+                    KEEP=3
+
+                    for IMAGE in ${REGISTRY}/${IMAGE_BACKEND} ${REGISTRY}/${IMAGE_FRONTEND}; do
+                        echo "--- Processing: $IMAGE ---"
+
+                        # Lấy danh sách image IDs theo thứ tự mới → cũ, bỏ qua $KEEP cái đầu
+                        OLD_IDS=$(docker images --format "{{.ID}}" "$IMAGE" | awk "NR > $KEEP")
+
+                        if [ -n "$OLD_IDS" ]; then
+                            echo "Removing old images for $IMAGE:"
+                            echo "$OLD_IDS" | xargs docker rmi -f || true
+                        else
+                            echo "Nothing to remove for $IMAGE (<= $KEEP images exist)"
+                        fi
+                    done
+
+                    # Dọn dangling images (<none>) tích tụ từ các lần pull
+                    echo "--- Pruning dangling images ---"
+                    docker image prune -f
+
+                    echo "=== Cleanup complete. Remaining ShopNest images: ==="
+                    docker images | grep -E "shopnest|REPOSITORY" || true
+                '''
+            }
+        }
     }
 
     post {
