@@ -1,6 +1,8 @@
 name: ShopNest CI/CD — Build on GitHub Actions & Deploy via Jenkins
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -133,29 +135,27 @@ jobs:
             echo 'Waiting for Jenkins build to start and complete...'
             sleep 5
 
-            for i in \$(seq 1 30); do
+            for i in \$(seq 1 60); do
               BUILD_INFO=\$(curl -s http://localhost:8080/job/shopnest-deploy/lastBuild/api/json 2>/dev/null || echo '{}')
               IS_BUILDING=\$(echo \"\$BUILD_INFO\" | jq -r '.building // true')
               BUILD_NUM=\$(echo \"\$BUILD_INFO\" | jq -r '.number // empty')
               RESULT=\$(echo \"\$BUILD_INFO\" | jq -r '.result // empty')
 
-              echo \"Attempt \$i/30: Build #\$BUILD_NUM - building=\$IS_BUILDING, result=\$RESULT\"
+              echo \"Attempt \$i/60: Build #\$BUILD_NUM - building=\$IS_BUILDING, result=\$RESULT\"
 
-              if [ \"\$IS_BUILDING\" = 'false' ] && [ -n \"\$RESULT\" ] && [ \"\$RESULT\" != 'null' ]; then
-                if [ \"\$RESULT\" = 'SUCCESS' ]; then
-                  echo \"✅ Jenkins build #\$BUILD_NUM SUCCEEDED!\"
-                  exit 0
-                else
-                  echo \"❌ Jenkins build #\$BUILD_NUM FAILED with result: \$RESULT\"
-                  echo '=== Last 60 lines of Jenkins console log ==='
-                  curl -s \"http://localhost:8080/job/shopnest-deploy/\${BUILD_NUM}/consoleText\" | tail -n 60
-                  exit 1
-                fi
+              if [ \"\$RESULT\" = 'SUCCESS' ]; then
+                echo \"✅ Jenkins build #\$BUILD_NUM SUCCEEDED!\"
+                exit 0
+              elif [ \"\$IS_BUILDING\" = 'false' ] && [ -n \"\$RESULT\" ] && [ \"\$RESULT\" != 'null' ]; then
+                echo \"❌ Jenkins build #\$BUILD_NUM FAILED with result: \$RESULT\"
+                echo '=== Last 60 lines of Jenkins console log ==='
+                curl -s \"http://localhost:8080/job/shopnest-deploy/\${BUILD_NUM}/consoleText\" | tail -n 60
+                exit 1
               fi
               sleep 5
             done
 
-            echo '❌ Jenkins build timed out after 150s'
+            echo '❌ Jenkins build timed out after 300s'
             exit 1
           "
 
