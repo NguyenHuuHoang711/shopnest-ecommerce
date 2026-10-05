@@ -51,7 +51,7 @@ pipeline {
                 sh '''
                     echo "=== Stage 3: Deploying with Docker Compose ==="
                     cd ${COMPOSE_DIR}
-                    docker compose up -d --force-recreate --remove-orphans backend frontend
+                    docker compose up -d --force-recreate --remove-orphans backend frontend cloudflared
                     echo "Waiting for services to initialize..."
                     sleep 5
                     docker compose ps

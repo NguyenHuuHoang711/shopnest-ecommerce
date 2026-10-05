@@ -50,6 +50,15 @@ services:
       - JENKINS_OPTS=--prefix=/
       - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
 
+  # ─── Cloudflare Tunnel: expose shopnest.asao.vn ───
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: shopnest-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token eyJhIjoiODc2NTFkZjE0Y2M0ZjIzM2YzZDg2MWFhZjYzZDgyNDUiLCJ0IjoiYjY2ZTQ4MTgtMGE4Ni00ZGRhLWE4ZWUtMjkyYjZkYTJmNDlhIiwicyI6ImE4TWlDNDZQRnEyTUpQOVFRUTA2YktwNE1Qc2UrRjgwZlREZmZGOWY2QVU9In0= --url http://frontend:80
+    depends_on:
+      - frontend
+
 volumes:
   shopnest_db:
   jenkins_home:
