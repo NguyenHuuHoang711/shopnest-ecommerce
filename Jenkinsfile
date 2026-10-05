@@ -35,13 +35,22 @@ pipeline {
             }
         }
 
-        stage('Build Docker Images') {
+        stage('Prepare Docker Images') {
             steps {
                 sh '''
-                    echo "=== Stage 2: Building ShopNest Docker Images locally ==="
+                    echo "=== Stage 2: Preparing ShopNest Docker Images ==="
                     cd ${COMPOSE_DIR}
-                    docker compose build backend frontend
-                    echo "Images built successfully."
+                    # 1. Kéo image Frontend đã được GitHub Actions build và push lên GHCR
+                    echo "Pulling latest Frontend image from GHCR..."
+                    if ! docker compose pull frontend; then
+                        echo "Image Frontend chưa có trên GHCR hoặc pull thất bại, tự build cục bộ..."
+                        docker compose build frontend
+                    fi
+
+                    # 2. Build Backend image trực tiếp trên máy chủ
+                    echo "Building Backend image..."
+                    docker compose build backend
+                    echo "Images ready for deployment."
                 '''
             }
         }
