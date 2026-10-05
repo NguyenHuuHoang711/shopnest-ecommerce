@@ -133,3 +133,101 @@ Hệ thống chạy 4 service phối hợp:
    - Kiểm tra Frontend Nginx: `http://localhost/` (HTTP 200).
 6. **Stage 6 (Cleanup):**
    - Dọn dẹp images vô chủ: `docker image prune -f`.
+
+---
+
+## 8. TOÀN BỘ LUỒNG HOẠT ĐỘNG CI/CD (END-TO-END WORKFLOW)
+
+Hệ thống ShopNest áp dụng mô hình **Hybrid CI/CD (CI trên GitHub Actions + CD điều phối trên Jenkins)** nhằm tối ưu hóa tài nguyên phần cứng và đảm bảo tính độc lập giữa các thành phần.
+
+### 8.1. Sơ đồ tuần tự quy trình (Sequence Diagram)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as Lập trình viên
+    participant GH as GitHub Repository
+    participant GHA as GitHub Actions Runner
+    participant GHCR as GitHub Container Registry (ghcr.io)
+    participant Jenkins as Jenkins (GCP Spot VM)
+    participant Docker as Docker Compose (Spot VM)
+    participant CF as Cloudflare Edge
+    actor User as Người dùng Web
+
+    Dev->>GH: git push origin main
+    
+    par Luồng Frontend (Nếu có thay đổi frontend/**)
+        GH->>GHA: Kích hoạt .github/workflows/frontend-ci.yml
+        GHA->>GHA: npm install & npm run build (Vite Test)
+        GHA->>GHCR: Build Dockerfile & Push shopnest-frontend:latest
+        GHA->>Jenkins: Gọi Webhook thông báo deploy (HTTP POST)
+    and Luồng Backend / Tổng thể (Nếu có sửa backend hoặc code chung)
+        GH->>Jenkins: GitHub Webhook gửi tín hiệu push commit
+    end
+
+    Note over Jenkins,Docker: BẮT ĐẦU QUY TRÌNH DEPLOY TRÊN SPOT VM
+    Jenkins->>GH: Stage 1: Checkout mã nguồn commit mới nhất
+    Jenkins->>Docker: Stage 2: Đồng bộ files vào /opt/shopnest
+    Jenkins->>GHCR: Stage 3: Kéo image Frontend mới nhất (Pull nhanh ~2s)
+    Jenkins->>Docker: Stage 3: Tự build image Backend cục bộ (Layer Cache)
+    Jenkins->>Docker: Stage 4: docker compose up -d (backend + frontend + cloudflared)
+    Jenkins->>Docker: Stage 5: Health Check HTTP 200 (API & Frontend)
+    Jenkins->>Docker: Stage 6: Dọn dẹp dangling images (docker image prune -f)
+
+    Note over Docker,User: PHỤC VỤ TRUY CẬP RA INTERNET
+    Docker->>CF: shopnest-cloudflared duy trì tunnel an toàn
+    User->>CF: Truy cập https://shopnest.asao.vn (HTTPS tự động)
+    CF->>Docker: Reverse proxy chuyển tiếp vào Nginx:80
+    Docker-->>User: Trả về React App & API (Không lỗi CORS)
+```
+
+### 8.2. Kịch bản 1: Khi lập trình viên sửa đổi Frontend (`frontend/**`)
+1. **Lập trình viên commit & push:** Thay đổi mã nguồn React trong `frontend/`.
+2. **GitHub Actions kích hoạt:** Nhờ bộ lọc `paths: ['frontend/**']`, file `.github/workflows/frontend-ci.yml` tự động khởi chạy trên máy ảo đám mây của GitHub (Ubuntu Runner).
+3. **Kiểm thử & Đóng gói:**
+   - Cài đặt Node 20, chạy `npm install` và `npm run build` để kiểm tra toàn bộ cú pháp và bundling của Vite.
+   - Sử dụng Docker Buildx đóng gói Frontend thành image Nginx tĩnh: `ghcr.io/nguyenhuuhoang711/shopnest-frontend:latest`.
+   - Đẩy image lên **GitHub Container Registry (GHCR)**.
+4. **Bắn tín hiệu sang Jenkins:** Bước cuối cùng của GitHub Actions gửi một request HTTP POST sang Webhook của Jenkins:
+   ```bash
+   curl -s -X POST 'http://34.143.239.87:8080/generic-webhook-trigger/invoke?token=shopnest-deploy'
+   ```
+5. **Jenkins tiến hành Deploy:**
+   - Jenkins trên Spot VM nhận webhook và khởi động lượt build mới trong job `shopnest-deploy`.
+   - Thay vì phải compile lại React (rất nặng và ngốn RAM), Jenkins chỉ việc chạy `docker compose pull frontend` để kéo image đã được build sẵn về (chỉ mất ~2 giây).
+   - Recreate container `shopnest-frontend` và kiểm tra Health Check thành công.
+
+---
+
+### 8.3. Kịch bản 2: Khi lập trình viên sửa đổi Backend (`server.js`, `routes/**`, `db.js`...)
+1. **Lập trình viên commit & push:** Cập nhật API logic, database SQLite hoặc file gốc.
+2. **Phân luồng:**
+   - GitHub Actions **bỏ qua không chạy** (vì không chạm vào thư mục `frontend/**`, tiết kiệm quota GitHub Actions).
+   - GitHub Webhook bắn tín hiệu trực tiếp sang Jenkins trên Spot VM.
+3. **Jenkins tự động build & deploy:**
+   - Kéo mã nguồn mới từ Git về.
+   - Biên dịch lại image Backend bằng Docker cục bộ trên máy chủ (`docker compose build backend`).
+   - Khởi động lại container `shopnest-backend`.
+   - Chạy Health Check endpoint `http://localhost/api/health` trả về `{"status":"ok"}`.
+
+---
+
+### 8.4. Kịch bản 3: Khi cả Frontend và Backend cùng thay đổi trong 1 commit
+1. Cả GitHub Actions lẫn Jenkins đều nhận tín hiệu.
+2. GitHub Actions biên dịch Frontend và đẩy lên GHCR.
+3. Jenkins kéo mã nguồn mới, tải image Frontend từ GHCR về, tự build Backend, và restart đồng bộ cả 2 service trong cùng 1 lần triển khai Docker Compose.
+4. Toàn bộ tiến trình hiển thị trực quan trên giao diện **Jenkins Blue Ocean** và **GitHub Actions tab**.
+
+---
+
+## 9. CÁC NGUYÊN TẮC THIẾT KẾ & TỐI ƯU CỐT LÕI (BEST PRACTICES)
+
+1. **Bảo vệ tài nguyên Spot VM (RAM 4GB):**
+   Quá trình `npm install` và `vite build` của Frontend là tác vụ ngốn CPU và RAM nhất. Bằng cách đẩy khâu này lên GitHub Actions runner, máy chủ Spot VM luôn giữ được mức RAM trống cao (~2.6GB free), không bao giờ bị tình trạng OOM (Out Of Memory) làm sập máy chủ.
+2. **Cơ chế Fallback dự phòng trong `Jenkinsfile`:**
+   Nếu vì bất kỳ lý do gì mà image trên GHCR chưa kịp tải hoặc lỗi mạng, Jenkins sẽ tự động chuyển sang build trực tiếp trên máy chủ (`docker compose build frontend`) để pipeline luôn đảm bảo thành công 100%.
+3. **Bảo vệ kết nối Cloudflare Tunnel:**
+   Lệnh `docker compose up -d` luôn chỉ định rõ ràng 3 service `backend frontend cloudflared`. Điều này ngăn cờ `--remove-orphans` vô tình gỡ bỏ container tunnel, giúp domain `https://shopnest.asao.vn/` hoạt động liên tục không bị gián đoạn.
+4. **Triệt tiêu lỗi CORS nhờ Nginx Reverse Proxy:**
+   Frontend và Backend chạy chung dưới một domain `shopnest.asao.vn`. Mọi request `/api/*` được Nginx điều hướng nội bộ sang `backend:3000`, browser không bao giờ bị chặn CORS policy.
+
