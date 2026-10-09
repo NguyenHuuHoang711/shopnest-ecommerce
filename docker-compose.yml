@@ -1,7 +1,19 @@
 version: '3.8'
 
 services:
-  # ─── Backend: Node.js API (SQLite database) ───
+  # ─── Database: MongoDB ───
+  mongodb:
+    image: mongo:7.0
+    container_name: shopnest-mongo
+    restart: unless-stopped
+    expose:
+      - "27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=shopnest
+
+  # ─── Backend: Node.js API (Express 5 + MongoDB) ───
   backend:
     image: ghcr.io/nguyenhuuhoang711/shopnest-backend:latest
     build:
@@ -11,12 +23,14 @@ services:
     restart: unless-stopped
     expose:
       - "3000"
-    volumes:
-      - shopnest_db:/app/data
+    depends_on:
+      - mongodb
     environment:
       - PORT=3000
       - NODE_ENV=production
-      - DATA_DIR=/app/data
+      - MONGO_URI=mongodb://mongodb:27017/shopnest
+      - JWT_SECRET=shopnest_jwt_secret_super_secure_key_2026
+      - CLIENT_URL=https://shopnest.asao.vn
 
   # ─── Frontend: React SPA served by Nginx + API reverse proxy ───
   frontend:
@@ -60,5 +74,5 @@ services:
       - frontend
 
 volumes:
-  shopnest_db:
+  mongo_data:
   jenkins_home:

@@ -1,214 +1,248 @@
-import React, { useState, useEffect } from 'react';
-import Navbar from './components/Navbar';
-import ProductCard from './components/ProductCard';
-import CartDrawer from './components/CartDrawer';
-import CheckoutModal from './components/CheckoutModal';
-import OrdersModal from './components/OrdersModal';
-import AdminModal from './components/AdminModal';
-import AuthModal from './components/AuthModal';
-import { useAuth } from './context/AuthContext';
-import { api } from './services/api';
-import { ShoppingBag, Sparkles, Filter, CheckCircle2 } from 'lucide-react';
+import "./App.css";
+import { createBrowserRouter, RouterProvider, Outlet } from "react-router-dom";
+import React, { lazy, Suspense } from "react";
 
-export default function App() {
-  const { isAuthenticated } = useAuth();
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
+import Home from "./pages/user/Home";
 
-  // Modals state
-  const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
-  const [ordersModalOpen, setOrdersModalOpen] = useState(false);
-  const [adminModalOpen, setAdminModalOpen] = useState(false);
-  const [orderSuccessBanner, setOrderSuccessBanner] = useState(false);
+const Products = lazy(() => import("./pages/user/Products"));
+const Product = lazy(() => import("./pages/user/Product"));
+const About = lazy(() => import("./pages/user/About"));
+const Contact = lazy(() => import("./pages/user/Contact"));
+const Faq = lazy(() => import("./pages/user/Faq"));
+const ShippingAndReturn = lazy(() => import("./pages/user/ShippingAndReturn"));
+const StorePolicy = lazy(() => import("./pages/user/StorePolicy"));
+const Cart = lazy(() => import("./pages/user/Cart"));
+const Checkout = lazy(() => import("./pages/user/Checkout"));
+const Authentication = lazy(() => import("./pages/auth/Authentication"));
+const ForgotPassword = lazy(() => import("./pages/auth/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/auth/ResetPassword"));
+const Wishlist = lazy(() => import("./pages/user/Wishlist"));
+const Orders = lazy(() => import("./pages/user/Orders"));
+const Order = lazy(() => import("./pages/user/Order"));
+const Profile = lazy(() => import("./pages/user/Profile"));
+const Admin = lazy(() => import("./pages/admin/Admin"));
+const AdminOrders = lazy(() => import("./pages/admin/AdminOrders"));
+const AdminOrderDetails = lazy(() => import("./pages/admin/AdminOrderDetails"));
+const AdminProducts = lazy(() => import("./pages/admin/AdminProducts"));
+const AddProduct = lazy(() => import("./pages/admin/AddProduct"));
+const EditProduct = lazy(() => import("./pages/admin/EditProduct"));
+const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
+const AdminUserDetails = lazy(() => import("./pages/admin/AdminUserDetails"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
-  const categories = [
-    { id: 'all', label: 'All Items' },
-    { id: 'Electronics', label: 'Electronics' },
-    { id: 'Fashion', label: 'Fashion' },
-    { id: 'Home', label: 'Home & Living' },
-    { id: 'Sports', label: 'Sports' },
-  ];
+import Topbar from "./features/admin/components/shared/Topbar";
+import Sidebar from "./features/admin/components/shared/Sidebar";
+import Navbar from "./components/layout/Navbar";
+import Footer from "./components/layout/Footer";
+import ScrollToTop from "./routes/ScrollToTop";
+import ProtectedRoute from "./routes/ProtectedRoute";
+import AdminRoute from "./routes/AdminRoute";
+import GlobalLoader from "./components/feedback/loading/GlobalLoader";
+import RouteError from "./components/feedback/error/RouteError";
 
-  const fetchProducts = async () => {
-    try {
-      setLoading(true);
-      const data = await api.getProducts({
-        category: selectedCategory,
-        search: searchTerm,
-      });
-      setProducts(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error('Failed to load products', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchProducts();
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [selectedCategory, searchTerm]);
-
-  const handleOrderPlaced = () => {
-    setCheckoutModalOpen(false);
-    setOrderSuccessBanner(true);
-    setTimeout(() => setOrderSuccessBanner(false), 5000);
-    fetchProducts();
-  };
-
+const AppLayout = () => {
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
-      {/* Top Notification / Success Banner */}
-      {orderSuccessBanner && (
-        <div className="bg-emerald-600 text-white text-xs font-semibold py-2.5 px-4 text-center flex items-center justify-center gap-2 animate-in fade-in">
-          <CheckCircle2 className="w-4 h-4" />
-          <span>Your order has been placed successfully! Check your orders list.</span>
-          <button
-            onClick={() => setOrdersModalOpen(true)}
-            className="underline ml-2 hover:text-emerald-100"
-          >
-            View Orders
-          </button>
-        </div>
-      )}
+    <>
+      <ScrollToTop />
+      <Outlet />
+    </>
+  );
+};
 
-      {/* Navigation */}
-      <Navbar
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
-        selectedCategory={selectedCategory}
-        setSelectedCategory={setSelectedCategory}
-        onOpenAuth={() => setAuthModalOpen(true)}
-        onOpenOrders={() => setOrdersModalOpen(true)}
-        onOpenAdmin={() => setAdminModalOpen(true)}
-      />
-
-      {/* Minimal Header / Subheader */}
-      <section className="bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-            <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-sky-50 text-sky-700 text-xs font-semibold mb-2">
-                <Sparkles className="w-3.5 h-3.5" /> Curated Lifestyle Goods
-              </div>
-              <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900">
-                Explore the Collection
-              </h1>
-              <p className="mt-1 text-sm text-slate-500 max-w-xl">
-                Simple, reliable essentials designed for your everyday workspace and home.
-              </p>
-            </div>
-
-            {/* Category Pills */}
-            <div className="flex flex-wrap gap-2 pt-2 md:pt-0">
-              {categories.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    selectedCategory === cat.id
-                      ? 'bg-slate-900 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
-                  }`}
-                >
-                  {cat.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Main Catalog */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
-        {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[...Array(8)].map((_, i) => (
-              <div key={i} className="bg-white rounded-xl border border-slate-200 p-4 animate-pulse">
-                <div className="aspect-[4/3] bg-slate-200 rounded-lg mb-3"></div>
-                <div className="h-4 bg-slate-200 rounded w-3/4 mb-2"></div>
-                <div className="h-3 bg-slate-100 rounded w-1/2 mb-4"></div>
-                <div className="h-5 bg-slate-200 rounded w-1/4"></div>
-              </div>
-            ))}
-          </div>
-        ) : products.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-2xl border border-slate-200">
-            <ShoppingBag className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <h3 className="text-base font-semibold text-slate-800">No products found</h3>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              Try adjusting your search criteria or clearing category filters.
-            </p>
-            <button
-              onClick={() => {
-                setSelectedCategory('all');
-                setSearchTerm('');
-              }}
-              className="mt-4 px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800"
-            >
-              Reset Filters
-            </button>
-          </div>
-        ) : (
-          <div>
-            <div className="flex items-center justify-between text-xs text-slate-500 mb-4">
-              <span>Showing {products.length} products</span>
-              {selectedCategory !== 'all' && (
-                <span className="font-medium text-slate-700">Filter: {selectedCategory}</span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-              {products.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  onRequireAuth={() => setAuthModalOpen(true)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+const RootLayout = () => {
+  return (
+    <div className="flex flex-col min-h-screen">
+      <Navbar />
+      <main className="flex-1 flex flex-col">
+        <Outlet />
       </main>
-
-      {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-900">ShopNest</span>
-            <span>— Simple, Clean E-Commerce</span>
-          </div>
-          <div>
-            Built with React, Node.js, Docker, Terraform & Jenkins
-          </div>
-        </div>
-      </footer>
-
-      {/* Modals & Overlays */}
-      <CartDrawer onProceedToCheckout={() => setCheckoutModalOpen(true)} />
-      <CheckoutModal
-        isOpen={checkoutModalOpen}
-        onClose={() => setCheckoutModalOpen(false)}
-        onOrderPlaced={handleOrderPlaced}
-      />
-      <OrdersModal
-        isOpen={ordersModalOpen}
-        onClose={() => setOrdersModalOpen(false)}
-      />
-      <AdminModal
-        isOpen={adminModalOpen}
-        onClose={() => setAdminModalOpen(false)}
-        onProductChange={fetchProducts}
-      />
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-      />
+      <Footer />
     </div>
   );
-}
+};
+const AuthLayout = () => <Outlet />;
+
+const AdminLayout = () => {
+  return (
+    <div className="flex min-h-screen bg-white text-black">
+      <Sidebar />
+
+      <div className="min-w-0 flex-1 flex flex-col relative lg:pl-72">
+        <Topbar />
+        <main className="flex-1">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-4">
+            <Outlet />
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+};
+
+const router = createBrowserRouter([
+  {
+    element: <AppLayout />,
+    children: [
+      {
+        path: "/admin",
+        errorElement: <RouteError />,
+        element: <AdminLayout />,
+        children: [
+          {
+            path: "",
+            element: (
+              <AdminRoute>
+                <Admin />
+              </AdminRoute>
+            ),
+          },
+          {
+            path: "orders",
+            element: (
+              <AdminRoute>
+                <AdminOrders />
+              </AdminRoute>
+            ),
+          },
+          {
+            path: "orders/:id",
+            element: (
+              <AdminRoute>
+                <AdminOrderDetails />
+              </AdminRoute>
+            ),
+          },
+          {
+            path: "products",
+            element: (
+              <AdminRoute>
+                <AdminProducts />
+              </AdminRoute>
+            ),
+          },
+          {
+            path: "products/new",
+            element: (
+              <AdminRoute>
+                <AddProduct />
+              </AdminRoute>
+            ),
+          },
+          {
+            path: "products/:id/edit",
+            element: (
+              <AdminRoute>
+                <EditProduct />
+              </AdminRoute>
+            ),
+          },
+          {
+            path: "users",
+            element: (
+              <AdminRoute>
+                <AdminUsers />
+              </AdminRoute>
+            ),
+          },
+          {
+            path: "users/:id",
+            element: (
+              <AdminRoute>
+                <AdminUserDetails />
+              </AdminRoute>
+            ),
+          },
+          {
+            path: "*",
+            element: <NotFound />,
+          },
+        ],
+      },
+      {
+        path: "/auth",
+        errorElement: <RouteError />,
+        element: <AuthLayout />,
+        children: [
+          { path: "", element: <Authentication /> },
+          { path: "forgot-password", element: <ForgotPassword /> },
+          { path: "reset-password/:token", element: <ResetPassword /> },
+
+          {
+            path: "*",
+            element: <NotFound />,
+          },
+        ],
+      },
+      {
+        path: "/",
+        errorElement: <RouteError />,
+        element: <RootLayout />,
+        children: [
+          { path: "", element: <Home /> },
+          { path: "products", element: <Products /> },
+          { path: "about", element: <About /> },
+          { path: "faq", element: <Faq /> },
+          { path: "contact", element: <Contact /> },
+          { path: "shipping&return", element: <ShippingAndReturn /> },
+          { path: "storepolicy", element: <StorePolicy /> },
+          { path: "cart", element: <Cart /> },
+          { path: "products/:id", element: <Product /> },
+          {
+            path: "profile",
+            element: (
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "wishlist",
+            element: (
+              <ProtectedRoute>
+                <Wishlist />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "orders",
+            element: (
+              <ProtectedRoute>
+                <Orders />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "orders/:id",
+            element: (
+              <ProtectedRoute>
+                <Order />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "checkout",
+            element: (
+              <ProtectedRoute>
+                <Checkout />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "*",
+            element: <NotFound />,
+          },
+        ],
+      },
+    ],
+  },
+]);
+
+const App = () => {
+  return (
+    <Suspense fallback={<GlobalLoader />}>
+      <RouterProvider router={router} />
+    </Suspense>
+  );
+};
+
+export default App;

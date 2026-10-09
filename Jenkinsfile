@@ -60,7 +60,7 @@ pipeline {
                 sh '''
                     echo "=== Stage 3: Deploying with Docker Compose ==="
                     cd ${COMPOSE_DIR}
-                    docker compose up -d --force-recreate --remove-orphans backend frontend cloudflared
+                    docker compose up -d --force-recreate --remove-orphans mongodb backend frontend cloudflared
                     echo "Waiting for services to initialize..."
                     sleep 5
                     docker compose ps
@@ -72,7 +72,7 @@ pipeline {
             steps {
                 sh '''
                     echo "=== Stage 4: Health Check ==="
-                    for i in $(seq 1 6); do
+                    for i in $(seq 1 10); do
                         API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://backend:3000/api/health)
                         if [ "$API_STATUS" != "200" ]; then
                             API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://frontend/api/health)
