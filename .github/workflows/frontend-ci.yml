@@ -61,7 +61,7 @@ jobs:
       - name: Notify Jenkins on Spot VM to Deploy
         run: |
           echo "Triggering Jenkins deployment webhook on Spot VM..."
-          curl -s -X POST 'http://34.143.239.87:8080/generic-webhook-trigger/invoke?token=shopnest-deploy' \
+          curl -s -X POST 'http://136.85.23.241:8080/generic-webhook-trigger/invoke?token=shopnest-deploy' \
             -H 'Content-Type: application/json' \
             -d '{"ref": "refs/heads/main", "after": "${{ github.sha }}"}' || true
           echo "✅ Jenkins deployment triggered successfully!"

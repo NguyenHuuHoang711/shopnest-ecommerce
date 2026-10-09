@@ -30,7 +30,7 @@ Hệ thống được khởi tạo và quản lý độc lập bằng **Terrafor
 | **Instance Name** | `shopnest-spot-vm` | Tên máy ảo Spot VM |
 | **Machine Type** | `e2-medium` | 2 vCPU, 4GB RAM + 2GB Swap file |
 | **Ổ đĩa khởi động (Boot Disk)** | 30GB `pd-balanced` | Ubuntu 24.04 LTS amd64 |
-| **Public IP máy chủ** | **`34.143.239.87`** | IP Public dùng kết nối Webhook & Jenkins |
+| **Public IP máy chủ** | **`136.85.23.241`** | IP Public dùng kết nối Webhook & Jenkins |
 | **VPC Network** | `shopnest-isolated-vpc` | VPC độc lập 100% |
 | **Subnet** | `shopnest-isolated-subnet` (`10.150.0.0/24`)| Dải mạng nội bộ riêng |
 | **Firewall Ports mở** | `22` (SSH), `80` (HTTP), `443` (HTTPS), `8080` (Jenkins), `3000` (Node.js API) | Target tag: `shopnest-spot` |
@@ -52,7 +52,7 @@ File định nghĩa: `.github/workflows/frontend-ci.yml`
 * **Xác thực Registry:** Sử dụng biến môi trường nội bộ `${{ secrets.GITHUB_TOKEN }}` (không cần tạo hay lộ Personal Access Token).
 * **Lệnh Webhook gọi Jenkins khi build xong:**
   ```bash
-  curl -s -X POST 'http://34.143.239.87:8080/generic-webhook-trigger/invoke?token=shopnest-deploy' \
+  curl -s -X POST 'http://136.85.23.241:8080/generic-webhook-trigger/invoke?token=shopnest-deploy' \
     -H 'Content-Type: application/json' \
     -d '{"ref": "refs/heads/main", "after": "${{ github.sha }}"}'
   ```
@@ -63,8 +63,8 @@ File định nghĩa: `.github/workflows/frontend-ci.yml`
 
 | Mục | Chi tiết cấu hình |
 | :--- | :--- |
-| **Đường dẫn Web Classic UI** | `http://34.143.239.87:8080` |
-| **Đường dẫn Modern Blue Ocean** | `http://34.143.239.87:8080/blue/organizations/jenkins/shopnest-deploy/activity` |
+| **Đường dẫn Web Classic UI** | `http://136.85.23.241:8080` |
+| **Đường dẫn Modern Blue Ocean** | `http://136.85.23.241:8080/blue/organizations/jenkins/shopnest-deploy/activity` |
 | **Tài khoản đăng nhập** | Đã tắt màn hình khóa (`-Djenkins.install.runSetupWizard=false`), truy cập trực tiếp |
 | **Image Docker của Jenkins** | `jenkins/jenkins:lts-jdk21` |
 | **User thực thi trong container** | `root` (để gọi trực tiếp Docker socket của host) |
@@ -78,7 +78,7 @@ File định nghĩa: `.github/workflows/frontend-ci.yml`
 * **Đường dẫn kịch bản:** `Jenkinsfile`
 * **Cấu hình Webhook Trigger:**
   - Token Webhook: `shopnest-deploy`
-  - URL nhận Webhook: `http://34.143.239.87:8080/generic-webhook-trigger/invoke?token=shopnest-deploy`
+  - URL nhận Webhook: `http://136.85.23.241:8080/generic-webhook-trigger/invoke?token=shopnest-deploy`
 
 ---
 
@@ -190,7 +190,7 @@ sequenceDiagram
    - Đẩy image lên **GitHub Container Registry (GHCR)**.
 4. **Bắn tín hiệu sang Jenkins:** Bước cuối cùng của GitHub Actions gửi một request HTTP POST sang Webhook của Jenkins:
    ```bash
-   curl -s -X POST 'http://34.143.239.87:8080/generic-webhook-trigger/invoke?token=shopnest-deploy'
+   curl -s -X POST 'http://136.85.23.241:8080/generic-webhook-trigger/invoke?token=shopnest-deploy'
    ```
 5. **Jenkins tiến hành Deploy:**
    - Jenkins trên Spot VM nhận webhook và khởi động lượt build mới trong job `shopnest-deploy`.
