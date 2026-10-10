@@ -152,7 +152,7 @@ const Navbar = () => {
               className="text-lg sm:text-xl font-light tracking-widest"
               to="/"
             >
-              NOVA <span className="font-semibold">STONE</span>
+              SHOP<span className="font-semibold">NEST</span>
             </Link>
           </div>
 

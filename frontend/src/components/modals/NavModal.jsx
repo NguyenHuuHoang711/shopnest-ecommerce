@@ -43,7 +43,7 @@ const NavModal = ({ isOpen, setIsOpen, NavLink, NAV_ITEMS }) => {
         </div>
 
         <div className="text-center text-xs text-gray-400 pb-6">
-          © {new Date().getFullYear()} NOVA STONE
+          © {new Date().getFullYear()} SHOPNEST & CO.
         </div>
       </div>
     </div>,

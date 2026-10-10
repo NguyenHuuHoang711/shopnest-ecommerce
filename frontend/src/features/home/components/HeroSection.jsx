@@ -43,7 +43,7 @@ const HeroSection = ({ navigate }) => {
 
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-white space-y-3">
         <h1 className="hero-title text-4xl md:text-7xl font-light tracking-wide">
-          NOVA STONE <span className="font-semibold">& CO.</span>
+          SHOPNEST <span className="font-semibold">& CO.</span>
         </h1>
 
         <p className="hero-sub  text-lg md:text-3xl font-light">

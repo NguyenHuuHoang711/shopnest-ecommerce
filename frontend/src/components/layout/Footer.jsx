@@ -77,7 +77,7 @@ const Footer = () => {
           </p>
 
           <h2 className="text-2xl sm:text-4xl font-light tracking-wide leading-tight">
-            Stay connected with Nova Stone
+            Stay connected with ShopNest
           </h2>
 
           <p className="text-sm text-gray-500 max-w-md mx-auto">
@@ -150,7 +150,7 @@ const Footer = () => {
       </div>
 
       <div className="border-t py-6 text-center text-[11px] tracking-wide text-gray-600">
-        © {year} NOVA STONE & CO.
+        © {year} SHOPNEST & CO.
       </div>
     </footer>
   );

@@ -42,7 +42,7 @@ const About = () => {
       <FadeIn>
         <section className="max-w-3xl mx-auto px-4 py-24 text-center space-y-6">
           <p className="text-xs tracking-[0.4em] uppercase text-gray-400">
-            Nova Stone & Co.
+            ShopNest & Co.
           </p>
 
           <p className="text-base sm:text-lg text-gray-600 leading-relaxed">

@@ -218,7 +218,7 @@ const Home = () => {
           <FadeIn delay={500}>
             <div className="max-w-3xl mx-auto px-6 py-20 sm:py-28 text-center space-y-6">
               <p className="text-[10px] tracking-[0.4em] text-gray-400 uppercase">
-                Nova Stone & Co.
+                ShopNest & Co.
               </p>
 
               <h2 className="text-xl sm:text-2xl font-light tracking-tight text-gray-900">
