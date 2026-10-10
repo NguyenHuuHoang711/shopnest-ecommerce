@@ -23,3 +23,4 @@ yarn-error.log*
 # Terraform local state / cache (kept in terraform/.gitignore, but good to have)
 terraform/.terraform/
 terraform/*.tfstate*
+.github_tmp/
