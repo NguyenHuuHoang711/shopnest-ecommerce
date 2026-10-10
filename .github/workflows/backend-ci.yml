@@ -1,0 +1,25 @@
+name: ShopNest Backend & Infrastructure Deploy
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'frontend/**'
+      - 'README.md'
+      - 'DEVOPS_CONFIG.md'
+      - '.gitignore'
+  workflow_dispatch:
+
+jobs:
+  notify-deploy:
+    name: Trigger Jenkins Deployment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Jenkins on Spot VM
+        run: |
+          echo "Triggering Jenkins deployment webhook on Spot VM for Backend/Config changes..."
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST 'http://136.85.23.241:8080/generic-webhook-trigger/invoke?token=shopnest-deploy' \
+            -H 'Content-Type: application/json' \
+            -d '{"ref": "refs/heads/main", "after": "${{ github.sha }}"}')
+          echo "Response: $RESPONSE"
+          echo "✅ Jenkins deployment triggered successfully!"
